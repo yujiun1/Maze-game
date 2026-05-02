@@ -1,0 +1,1464 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>미로찾기</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@300;400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --border: #1e1e2e;
+    --text: #e0e0f0;
+    --text-dim: #5a5a7a;
+    --accent: #00ffcc;
+    --accent2: #ff6b35;
+    --danger: #ff3366;
+    --enemy: #ff2255;
+    --enemy-glow: rgba(255,34,85,0.5);
+    --gold: #ffd700;
+    --player-glow: rgba(0,255,204,0.4);
+    --goal-glow: rgba(255,107,53,0.4);
+    --easy: #00cc88;
+    --normal: #ffaa00;
+    --hard: #ff3366;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans KR', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow-x: hidden;
+  }
+  body::before {
+    content:'';
+    position:fixed;
+    inset:0;
+    background-image:
+      linear-gradient(rgba(0,255,204,0.03) 1px, transparent 1px),
+      linear-gradient(90deg,rgba(0,255,204,0.03) 1px, transparent 1px);
+    background-size:40px 40px;
+    pointer-events:none;
+    z-index:0;
+  }
+
+  .app {
+    position:relative;
+    z-index:1;
+    width:100%;
+    max-width:960px;
+    padding:20px 16px 40px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:18px;
+  }
+
+  header { text-align:center; width:100%; }
+  .logo {
+    font-family:'Black Han Sans',sans-serif;
+    font-size:clamp(2rem,6vw,3.2rem);
+    letter-spacing:.15em;
+    color:var(--accent);
+    text-shadow:0 0 20px var(--player-glow),0 0 60px rgba(0,255,204,.2);
+    display:inline-block;
+  }
+  .logo span { color:var(--accent2); text-shadow:0 0 20px var(--goal-glow); }
+  .logo-sub {
+    font-family:'Share Tech Mono',monospace;
+    font-size:.72rem;
+    color:var(--text-dim);
+    letter-spacing:.3em;
+    margin-top:4px;
+  }
+
+  .difficulty-bar {
+    display:flex; gap:8px;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:6px;
+  }
+  .diff-btn {
+    font-family:'Black Han Sans',sans-serif;
+    font-size:.88rem;
+    letter-spacing:.1em;
+    padding:8px 20px;
+    border:1px solid transparent;
+    border-radius:6px;
+    cursor:pointer;
+    background:transparent;
+    color:var(--text-dim);
+    transition:all .2s;
+  }
+  .diff-btn:hover { color:var(--text); border-color:var(--border); }
+  .diff-btn.active[data-diff="easy"]   { background:rgba(0,204,136,.15);  color:var(--easy);   border-color:var(--easy);   box-shadow:0 0 12px rgba(0,204,136,.2); }
+  .diff-btn.active[data-diff="normal"] { background:rgba(255,170,0,.15);   color:var(--normal); border-color:var(--normal); box-shadow:0 0 12px rgba(255,170,0,.2); }
+  .diff-btn.active[data-diff="hard"]   { background:rgba(255,51,102,.15);  color:var(--hard);   border-color:var(--hard);   box-shadow:0 0 12px rgba(255,51,102,.2); }
+
+  .hud { display:flex; gap:10px; width:100%; flex-wrap:wrap; justify-content:center; }
+  .hud-card {
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:9px 16px;
+    text-align:center;
+    flex:1; min-width:80px;
+  }
+  .hud-label { font-size:.62rem; color:var(--text-dim); letter-spacing:.2em; text-transform:uppercase; font-family:'Share Tech Mono',monospace; margin-bottom:3px; }
+  .hud-value { font-family:'Share Tech Mono',monospace; font-size:1.3rem; color:var(--accent); }
+  .hud-value.danger { color:var(--danger); animation:pulse .5s infinite alternate; }
+  .hud-value.stage  { color:var(--accent2); }
+  .hud-value.lives  { color:#ff6b6b; letter-spacing:.05em; font-size:1.1rem; }
+  @keyframes pulse { from{opacity:1} to{opacity:.4} }
+
+  .maze-wrap {
+    position:relative;
+    border:1px solid var(--border);
+    border-radius:8px;
+    overflow:hidden;
+    box-shadow:0 0 0 1px rgba(0,255,204,.05),0 0 40px rgba(0,0,0,.8),inset 0 0 80px rgba(0,0,0,.5);
+  }
+  canvas { display:block; }
+
+  .controls-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:center; }
+
+  .hint-btn {
+    font-family:'Black Han Sans',sans-serif;
+    letter-spacing:.1em;
+    padding:10px 24px;
+    background:transparent;
+    border:1px solid var(--border);
+    border-radius:6px;
+    color:var(--text-dim);
+    cursor:pointer;
+    font-size:.88rem;
+    transition:all .2s;
+  }
+  .hint-btn:hover { border-color:var(--gold); color:var(--gold); box-shadow:0 0 12px rgba(255,215,0,.2); }
+  .hint-btn:disabled { opacity:.3; cursor:not-allowed; }
+
+  .new-btn {
+    font-family:'Black Han Sans',sans-serif;
+    letter-spacing:.15em;
+    padding:11px 32px;
+    background:rgba(0,255,204,.1);
+    border:1px solid var(--accent);
+    border-radius:6px;
+    color:var(--accent);
+    cursor:pointer;
+    font-size:.95rem;
+    transition:all .25s;
+    box-shadow:0 0 20px rgba(0,255,204,.1);
+  }
+  .new-btn:hover { background:rgba(0,255,204,.2); box-shadow:0 0 30px rgba(0,255,204,.25); transform:translateY(-1px); }
+
+  .key-hint {
+    display:flex; gap:5px; align-items:center;
+    font-size:.72rem; color:var(--text-dim);
+    font-family:'Share Tech Mono',monospace;
+  }
+  kbd {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:4px; padding:2px 7px;
+    font-family:'Share Tech Mono',monospace; font-size:.68rem; color:var(--text);
+  }
+
+  /* ── MANUAL ── */
+  .manual {
+    width:100%;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:8px;
+    overflow:hidden;
+  }
+  .manual-header {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:13px 18px;
+    border-bottom:1px solid transparent;
+    background:rgba(0,0,0,.15);
+    cursor:pointer;
+    user-select:none;
+    transition:background .2s;
+  }
+  .manual-header:hover { background:rgba(0,255,204,.04); }
+  .manual-header.open  { border-bottom-color:var(--border); }
+  .manual-header-left {
+    display:flex; align-items:center; gap:10px;
+    font-family:'Black Han Sans',sans-serif;
+    font-size:.9rem; letter-spacing:.12em; color:var(--text-dim);
+  }
+  .manual-header-left::before { content:'📖'; font-size:1.05rem; }
+  .manual-toggle {
+    font-size:.68rem; color:var(--text-dim);
+    font-family:'Share Tech Mono',monospace;
+    transition:transform .25s;
+  }
+  .manual-toggle.open { transform:rotate(180deg); }
+
+  .manual-body {
+    display:none;
+    padding:22px;
+    flex-direction:column;
+    gap:20px;
+  }
+  .manual-body.open { display:flex; }
+
+  .manual-grid {
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+    gap:18px;
+  }
+  .manual-section { display:flex; flex-direction:column; gap:10px; }
+  .manual-section-title {
+    font-family:'Black Han Sans',sans-serif;
+    font-size:.8rem;
+    letter-spacing:.12em;
+    color:var(--accent);
+    border-bottom:1px solid var(--border);
+    padding-bottom:7px;
+    margin-bottom:2px;
+  }
+  .manual-row {
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+    font-size:.81rem;
+    line-height:1.5;
+  }
+  .manual-icon {
+    flex-shrink:0;
+    width:30px; height:30px;
+    border-radius:7px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:1.05rem;
+  }
+  .icon-player  { background:rgba(0,255,204,.1);  border:1px solid rgba(0,255,204,.3); }
+  .icon-goal    { background:rgba(255,107,53,.1);  border:1px solid rgba(255,107,53,.3); }
+  .icon-enemy   { background:rgba(255,34,85,.1);   border:1px solid rgba(255,34,85,.3); }
+  .icon-chaser  { background:rgba(180,0,255,.1);   border:1px solid rgba(180,0,255,.3); }
+  .icon-hint    { background:rgba(255,215,0,.1);   border:1px solid rgba(255,215,0,.3); }
+  .icon-key     { background:rgba(255,255,255,.04); border:1px solid var(--border); }
+  .icon-life    { background:rgba(255,80,80,.1);   border:1px solid rgba(255,80,80,.3); }
+
+  .manual-row-text strong { color:var(--text); display:block; margin-bottom:2px; font-size:.83rem; }
+  .manual-row-text span   { color:var(--text-dim); font-size:.77rem; }
+
+  .manual-diff-table {
+    width:100%; border-collapse:collapse;
+    font-size:.79rem; font-family:'Share Tech Mono',monospace;
+  }
+  .manual-diff-table th {
+    color:var(--text-dim); font-weight:normal; text-align:left;
+    padding:5px 8px; border-bottom:1px solid var(--border);
+    font-size:.7rem; letter-spacing:.1em;
+  }
+  .manual-diff-table td { padding:7px 8px; border-bottom:1px solid rgba(255,255,255,.04); }
+  .manual-diff-table tr:last-child td { border-bottom:none; }
+  .td-easy   { color:var(--easy); }
+  .td-normal { color:var(--normal); }
+  .td-hard   { color:var(--hard); }
+
+  .manual-tip {
+    background:rgba(0,255,204,.04);
+    border:1px solid rgba(0,255,204,.12);
+    border-radius:6px;
+    padding:12px 16px;
+    font-size:.78rem;
+    color:var(--text-dim);
+    line-height:1.7;
+  }
+  .manual-tip strong { color:var(--accent); }
+
+  /* ── RANKING ── */
+  .ranking { width:100%; background:var(--surface); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .ranking-header {
+    font-family:'Black Han Sans',sans-serif;
+    letter-spacing:.15em; font-size:.85rem;
+    color:var(--text-dim);
+    padding:12px 16px;
+    border-bottom:1px solid var(--border);
+    background:rgba(0,0,0,.2);
+    display:flex; align-items:center; gap:8px;
+  }
+  .ranking-header::before { content:'🏆'; font-size:1rem; }
+  .rank-item {
+    display:flex; align-items:center; gap:12px;
+    padding:9px 16px;
+    border-bottom:1px solid var(--border);
+    font-family:'Share Tech Mono',monospace;
+    font-size:.82rem;
+  }
+  .rank-item:last-child { border-bottom:none; }
+  .rank-item.new-entry  { background:rgba(0,255,204,.05); }
+  .rank-pos  { width:22px; text-align:center; font-size:1rem; }
+  .rank-diff { font-size:.68rem; padding:2px 8px; border-radius:4px; letter-spacing:.08em; flex-shrink:0; }
+  .rank-diff.easy   { background:rgba(0,204,136,.15); color:var(--easy); }
+  .rank-diff.normal { background:rgba(255,170,0,.15);  color:var(--normal); }
+  .rank-diff.hard   { background:rgba(255,51,102,.15); color:var(--hard); }
+  .rank-stage { color:var(--accent2); margin-left:auto; font-size:.72rem; }
+  .rank-time  { color:var(--accent); min-width:55px; text-align:right; }
+  .rank-empty { padding:20px; text-align:center; color:var(--text-dim); font-size:.8rem; font-family:'Share Tech Mono',monospace; }
+
+  /* ── OVERLAY ── */
+  .overlay {
+    position:fixed; inset:0;
+    background:rgba(0,0,0,.88);
+    display:flex; align-items:center; justify-content:center;
+    z-index:100; backdrop-filter:blur(8px);
+    opacity:0; pointer-events:none;
+    transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:all; }
+  .overlay-card {
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:16px;
+    padding:40px; text-align:center;
+    max-width:400px; width:90%;
+    box-shadow:0 0 60px rgba(0,0,0,.8);
+  }
+  .overlay-title { font-family:'Black Han Sans',sans-serif; font-size:2.2rem; letter-spacing:.15em; margin-bottom:8px; }
+  .overlay-title.win  { color:var(--accent); text-shadow:0 0 20px var(--player-glow); }
+  .overlay-title.over { color:var(--danger);  text-shadow:0 0 20px rgba(255,51,102,.5); }
+  .overlay-sub   { color:var(--text-dim); font-size:.83rem; margin-bottom:20px; font-family:'Share Tech Mono',monospace; }
+  .overlay-time  { font-family:'Share Tech Mono',monospace; font-size:2.4rem; color:var(--gold); margin-bottom:6px; }
+  .overlay-info  { font-size:.78rem; color:var(--text-dim); margin-bottom:24px; }
+
+  @keyframes death-flash {
+    0%   { background:rgba(255,0,50,.4); }
+    100% { background:transparent; }
+  }
+  .death-flash::after {
+    content:''; position:fixed; inset:0;
+    animation:death-flash .55s ease-out forwards;
+    pointer-events:none; z-index:99;
+  }
+
+  @keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+  .app { animation:fadeIn .4s ease; }
+
+  .start-diff-btn {
+    font-family:'Black Han Sans',sans-serif;
+    font-size:.9rem;
+    letter-spacing:.1em;
+    padding:9px 22px;
+    border:1px solid #1e1e2e;
+    border-radius:6px;
+    cursor:pointer;
+    background:transparent;
+    color:#5a5a7a;
+    transition:all .2s;
+  }
+  .start-diff-btn:hover { color:#e0e0f0; border-color:#3a3a5a; }
+  .start-diff-btn.active[data-diff="easy"]   { background:rgba(0,204,136,.15);  color:#00cc88; border-color:#00cc88; box-shadow:0 0 12px rgba(0,204,136,.2); }
+  .start-diff-btn.active[data-diff="normal"] { background:rgba(255,170,0,.15);  color:#ffaa00; border-color:#ffaa00; box-shadow:0 0 12px rgba(255,170,0,.2); }
+  .start-diff-btn.active[data-diff="hard"]   { background:rgba(255,51,102,.15); color:#ff3366; border-color:#ff3366; box-shadow:0 0 12px rgba(255,51,102,.2); }
+
+  /* ── D-PAD (모바일) ── */
+  .dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 58px);
+    grid-template-rows: repeat(3, 58px);
+    gap: 6px;
+    touch-action: none;
+    user-select: none;
+    background: rgba(18,18,26,0.8);
+    backdrop-filter: blur(10px);
+    padding: 12px;
+    border-radius: 18px;
+    border: 1px solid var(--border);
+  }
+  .dpad-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-size: 1.3rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background .1s, transform .1s;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .dpad-btn:active, .dpad-btn.pressed {
+    background: rgba(0,255,204,.15);
+    border-color: var(--accent);
+    transform: scale(0.93);
+  }
+  .dpad-center { background: transparent; border-color: transparent; pointer-events: none; }
+  .dpad-empty  { visibility: hidden; }
+  .dpad.hidden { display: none; }
+
+  /* ── 설정 버튼 ── */
+  .settings-btn {
+    font-family:'Black Han Sans',sans-serif;
+    letter-spacing:.1em;
+    padding:10px 18px;
+    background:transparent;
+    border:1px solid var(--border);
+    border-radius:6px;
+    color:var(--text-dim);
+    cursor:pointer;
+    font-size:.88rem;
+    transition:all .2s;
+  }
+  .settings-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+  /* ── 설정 패널 ── */
+  .settings-panel {
+    display:none;
+    width:100%;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:18px 20px;
+    gap:16px;
+    flex-direction:column;
+  }
+  .settings-panel.open { display:flex; }
+  .settings-title {
+    font-family:'Black Han Sans',sans-serif;
+    font-size:.85rem;
+    letter-spacing:.12em;
+    color:var(--accent);
+    border-bottom:1px solid var(--border);
+    padding-bottom:8px;
+  }
+  .settings-row {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+  }
+  .settings-label {
+    font-size:.85rem;
+    color:var(--text);
+  }
+  .settings-label span {
+    display:block;
+    font-size:.72rem;
+    color:var(--text-dim);
+    margin-top:2px;
+    font-family:'Share Tech Mono',monospace;
+  }
+  /* 토글 스위치 */
+  .toggle-wrap { display:flex; align-items:center; gap:8px; }
+  .toggle {
+    position:relative;
+    width:46px; height:24px;
+    cursor:pointer;
+    flex-shrink:0;
+  }
+  .toggle input { opacity:0; width:0; height:0; }
+  .toggle-track {
+    position:absolute;
+    inset:0;
+    background:var(--border);
+    border-radius:999px;
+    transition:background .2s;
+  }
+  .toggle input:checked + .toggle-track { background:var(--accent); }
+  .toggle-thumb {
+    position:absolute;
+    top:3px; left:3px;
+    width:18px; height:18px;
+    background:#fff;
+    border-radius:50%;
+    transition:transform .2s;
+    pointer-events:none;
+  }
+  .toggle input:checked ~ .toggle-thumb { transform:translateX(22px); }
+  .toggle-val {
+    font-family:'Share Tech Mono',monospace;
+    font-size:.78rem;
+    color:var(--text-dim);
+    min-width:28px;
+  }
+
+  .item-warning {
+    position:fixed;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%) scale(0.85);
+    background:rgba(18,18,26,0.95);
+    border:1px solid #ffe04b;
+    border-radius:12px;
+    padding:16px 32px;
+    font-family:'Black Han Sans',sans-serif;
+    font-size:1.1rem;
+    letter-spacing:.12em;
+    color:#ffe04b;
+    box-shadow:0 0 30px rgba(255,224,75,0.3);
+    z-index:200;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .2s, transform .2s;
+  }
+  .item-warning.show {
+    opacity:1;
+    transform:translate(-50%,-50%) scale(1);
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div class="logo">미로<span>찾기</span></div>
+    <div class="logo-sub">MAZE RUNNER v2.0</div>
+  </header>
+
+  <div class="difficulty-bar">
+    <button class="diff-btn active" data-diff="easy">쉬움</button>
+    <button class="diff-btn" data-diff="normal">보통</button>
+    <button class="diff-btn" data-diff="hard">어려움</button>
+  </div>
+
+  <div class="hud">
+    <div class="hud-card">
+      <div class="hud-label">STAGE</div>
+      <div class="hud-value stage" id="hud-stage">1</div>
+    </div>
+    <div class="hud-card">
+      <div class="hud-label">TIME</div>
+      <div class="hud-value" id="hud-time">00:00</div>
+    </div>
+    <div class="hud-card">
+      <div class="hud-label">LIVES</div>
+      <div class="hud-value lives" id="hud-lives">❤️❤️❤️</div>
+    </div>
+    <div class="hud-card">
+      <div class="hud-label">ITEMS</div>
+      <div class="hud-value" id="hud-items" style="color:#ffe04b">0/0</div>
+    </div>
+    <div class="hud-card">
+      <div class="hud-label">BEST</div>
+      <div class="hud-value" id="hud-best">--:--</div>
+    </div>
+  </div>
+
+  <div class="maze-wrap">
+    <canvas id="maze"></canvas>
+  </div>
+
+  <div class="controls-row">
+    <button class="hint-btn" id="hint-btn">💡 힌트 (3)</button>
+    <button class="new-btn" id="new-btn">새 게임</button>
+    <button class="settings-btn" id="settings-btn">⚙️ 설정</button>
+    <div class="key-hint">
+      <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 이동
+    </div>
+  </div>
+
+  <!-- ══════════════ 설정 패널 ══════════════ -->
+  <div class="settings-panel" id="settings-panel">
+    <div class="settings-title">⚙️ 설정</div>
+    <div class="settings-row">
+      <div class="settings-label">
+        조이스틱 표시
+        <span>화면 하단 D-PAD 버튼 ON/OFF</span>
+      </div>
+      <div class="toggle-wrap">
+        <label class="toggle">
+          <input type="checkbox" id="toggle-dpad" checked>
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+        <span class="toggle-val" id="toggle-dpad-val">ON</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ D-PAD ══════════════ -->
+  <div class="dpad">
+    <div class="dpad-empty"></div>
+    <button class="dpad-btn" id="dpad-up">▲</button>
+    <div class="dpad-empty"></div>
+    <button class="dpad-btn" id="dpad-left">◀</button>
+    <div class="dpad-btn dpad-center"></div>
+    <button class="dpad-btn" id="dpad-right">▶</button>
+    <div class="dpad-empty"></div>
+    <button class="dpad-btn" id="dpad-down">▼</button>
+    <div class="dpad-empty"></div>
+  </div>
+
+  <!-- ══════════════ MANUAL ══════════════ -->
+  <div class="manual">
+    <div class="manual-header" id="manual-toggle-btn">
+      <div class="manual-header-left">게임 설명서</div>
+      <div class="manual-toggle" id="manual-arrow">▼</div>
+    </div>
+    <div class="manual-body" id="manual-body">
+
+      <div class="manual-grid">
+
+        <!-- 오브젝트 -->
+        <div class="manual-section">
+          <div class="manual-section-title">등장 오브젝트</div>
+
+          <div class="manual-row">
+            <div class="manual-icon icon-player">🟢</div>
+            <div class="manual-row-text">
+              <strong>플레이어 (나)</strong>
+              <span>초록 빛의 원. 방향키로 조작하며 목표 지점에 도달하면 클리어!</span>
+            </div>
+          </div>
+
+          <div class="manual-row">
+            <div class="manual-icon icon-goal">⭐</div>
+            <div class="manual-row-text">
+              <strong>목표 지점</strong>
+              <span>미로 오른쪽 하단의 주황색 별. 여기까지 살아서 도달하세요.</span>
+            </div>
+          </div>
+
+          <div class="manual-row">
+            <div class="manual-icon icon-enemy">🔴</div>
+            <div class="manual-row-text">
+              <strong>순찰 적 (Patroller)</strong>
+              <span>빨간 원. 정해진 구간을 왔다 갔다 순찰합니다. 닿으면 목숨 -1.</span>
+            </div>
+          </div>
+
+          <div class="manual-row">
+            <div class="manual-icon icon-chaser">🟣</div>
+            <div class="manual-row-text">
+              <strong>추적 적 (Chaser)</strong>
+              <span>보라색 다이아몬드. 보통·어려움에 등장하며 BFS로 플레이어를 쫓아옵니다!</span>
+            </div>
+          </div>
+
+          <div class="manual-row">
+            <div class="manual-icon icon-hint" style="background:rgba(255,224,75,.1);border-color:rgba(255,224,75,.4)">⭐</div>
+            <div class="manual-row-text">
+              <strong>아이템 (수집 필수!)</strong>
+              <span>노란 별. 미로 곳곳에 배치되어 있으며, <strong style="color:#ffe04b">전부 수집해야</strong> 목표 지점 도달 시 클리어됩니다.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 조작법 -->
+        <div class="manual-section">
+          <div class="manual-section-title">조작 방법</div>
+
+          <div class="manual-row">
+            <div class="manual-icon icon-key">⬆️</div>
+            <div class="manual-row-text">
+              <strong>방향키로 이동</strong>
+              <span>↑ ↓ ← → 키로 플레이어를 한 칸씩 이동합니다. 벽은 통과 불가.</span>
+            </div>
+          </div>
+
+          <div class="manual-row">
+            <div class="manual-icon icon-hint">💡</div>
+            <div class="manual-row-text">
+              <strong>힌트 (스테이지당 3회)</strong>
+              <span>클릭하면 목표까지의 경로 일부를 3초간 노란 점으로 표시합니다.</span>
+            </div>
+          </div>
+
+          <div class="manual-row">
+            <div class="manual-icon icon-key">🔄</div>
+            <div class="manual-row-text">
+              <strong>새 게임 버튼</strong>
+              <span>언제든 누르면 스테이지 1·목숨 3개로 처음부터 다시 시작합니다.</span>
+            </div>
+          </div>
+
+          <div class="manual-row">
+            <div class="manual-icon icon-key">🎯</div>
+            <div class="manual-row-text">
+              <strong>난이도 선택</strong>
+              <span>상단 버튼으로 언제든 변경 가능. 변경 즉시 새 게임이 시작됩니다.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 목숨·게임오버 -->
+        <div class="manual-section">
+          <div class="manual-section-title">목숨 & 게임 오버</div>
+
+          <div class="manual-row">
+            <div class="manual-icon icon-life">❤️</div>
+            <div class="manual-row-text">
+              <strong>목숨 시스템</strong>
+              <span>처음에 목숨 3개. 적에게 닿으면 1개 차감되고 시작 지점으로 돌아갑니다.</span>
+            </div>
+          </div>
+
+          <div class="manual-row">
+            <div class="manual-icon icon-life">🛡️</div>
+            <div class="manual-row-text">
+              <strong>무적 시간</strong>
+              <span>목숨을 잃은 직후 2초간 무적 상태가 됩니다. 깜빡이는 동안은 안전!</span>
+            </div>
+          </div>
+
+          <div class="manual-row">
+            <div class="manual-icon icon-enemy">💀</div>
+            <div class="manual-row-text">
+              <strong>게임 오버</strong>
+              <span>목숨이 0이 되면 게임 오버. 스테이지 1·목숨 3개로 재시작합니다.</span>
+            </div>
+          </div>
+
+          <div class="manual-row">
+            <div class="manual-icon icon-player">🏆</div>
+            <div class="manual-row-text">
+              <strong>랭킹 등록</strong>
+              <span>스테이지 클리어 시 클리어 시간이 자동 저장됩니다. 빠를수록 유리!</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 난이도 표 -->
+        <div class="manual-section">
+          <div class="manual-section-title">난이도 비교표</div>
+          <table class="manual-diff-table">
+            <thead>
+              <tr>
+                <th>난이도</th>
+                <th>미로 크기</th>
+                <th>순찰 적</th>
+                <th>추적 적</th>
+                <th style="color:#ffe04b">아이템</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="td-easy">쉬움</td>
+                <td>11×11 ~</td>
+                <td>3마리</td>
+                <td>2마리</td>
+                <td style="color:#ffe04b">3개~</td>
+              </tr>
+              <tr>
+                <td class="td-normal">보통</td>
+                <td>17×17 ~</td>
+                <td>4마리</td>
+                <td>3마리</td>
+                <td style="color:#ffe04b">5개~</td>
+              </tr>
+              <tr>
+                <td class="td-hard">어려움</td>
+                <td>25×25 ~</td>
+                <td>6마리</td>
+                <td>4마리</td>
+                <td style="color:#ffe04b">8개~</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="manual-tip" style="margin-top:10px">
+            <strong>💡 팁</strong><br>
+            · 노란 별 아이템을 <strong style="color:#ffe04b">전부 수집</strong>해야 목표 지점에서 클리어됩니다.<br>
+            · 스테이지가 오를수록 아이템이 최대 4개 더 늘어납니다.<br>
+            · 스테이지가 오를수록 미로 크기가 2칸씩 커집니다.<br>
+            · 목숨은 스테이지를 넘겨도 유지됩니다. 아껴쓰세요!
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ RANKING ══════════════ -->
+  <div class="ranking">
+    <div class="ranking-header">랭킹 — 최근 기록</div>
+    <div class="rank-list" id="rank-list">
+      <div class="rank-empty">기록이 없습니다</div>
+    </div>
+  </div>
+
+</div><!-- /app -->
+
+<!-- ══════════════ ITEM WARNING ══════════════ -->
+<div class="item-warning" id="item-warning">⭐ 아이템을 모두 수집하세요!</div>
+
+<!-- ══════════════ TITLE SCREEN ══════════════ -->
+<div class="overlay show" id="title-overlay">
+  <div class="overlay-card" style="max-width:460px">
+    <div style="font-family:'Black Han Sans',sans-serif;font-size:2.6rem;letter-spacing:.18em;color:#00ffcc;text-shadow:0 0 24px rgba(0,255,204,.5),0 0 60px rgba(0,255,204,.2);margin-bottom:6px">
+      미로<span style="color:#ff6b35;text-shadow:0 0 24px rgba(255,107,53,.5)">찾기</span>
+    </div>
+    <div style="font-family:'Share Tech Mono',monospace;font-size:.72rem;color:#5a5a7a;letter-spacing:.3em;margin-bottom:28px">MAZE RUNNER v2.0</div>
+
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:28px;text-align:left;background:rgba(0,0,0,.2);border:1px solid #1e1e2e;border-radius:10px;padding:16px 20px">
+      <div style="font-family:'Black Han Sans',sans-serif;font-size:.78rem;letter-spacing:.12em;color:#00ffcc;border-bottom:1px solid #1e1e2e;padding-bottom:8px;margin-bottom:4px">게임 방법</div>
+      <div style="display:flex;gap:10px;align-items:flex-start;font-size:.8rem;color:#a0a0c0">
+        <span style="flex-shrink:0">⭐</span><span>노란 별 아이템을 <strong style="color:#ffe04b">모두 수집</strong>한 뒤 목표 지점에 도달하세요</span>
+      </div>
+      <div style="display:flex;gap:10px;align-items:flex-start;font-size:.8rem;color:#a0a0c0">
+        <span style="flex-shrink:0">🔴</span><span>빨간 적(순찰)·보라 적(추적)에 닿으면 목숨 -1</span>
+      </div>
+      <div style="display:flex;gap:10px;align-items:flex-start;font-size:.8rem;color:#a0a0c0">
+        <span style="flex-shrink:0">⬆️</span><span>방향키로 이동 · 💡 힌트 버튼으로 경로 확인</span>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px">
+      <div style="font-family:'Share Tech Mono',monospace;font-size:.68rem;color:#5a5a7a;letter-spacing:.15em;margin-bottom:2px">난이도 선택</div>
+      <div style="display:flex;gap:8px;justify-content:center">
+        <button class="start-diff-btn active" data-diff="easy"  onclick="selectDiff(this)">쉬움</button>
+        <button class="start-diff-btn"        data-diff="normal" onclick="selectDiff(this)">보통</button>
+        <button class="start-diff-btn"        data-diff="hard"   onclick="selectDiff(this)">어려움</button>
+      </div>
+    </div>
+
+    <button class="new-btn" id="start-btn" style="font-size:1.1rem;padding:14px 48px;letter-spacing:.2em">
+      ▶ 게임 시작
+    </button>
+  </div>
+</div>
+
+<!-- ══════════════ OVERLAY ══════════════ -->
+<div class="overlay" id="overlay">
+  <div class="overlay-card">
+    <div class="overlay-title" id="ov-title">CLEAR!</div>
+    <div class="overlay-sub"   id="ov-sub"></div>
+    <div class="overlay-time"  id="ov-time">00:00</div>
+    <div class="overlay-info"  id="ov-info"></div>
+    <button class="new-btn"    id="ov-next">계속하기</button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  CONFIG
+// ═══════════════════════════════════════════════════════════
+const DIFF_CFG = {
+  easy:   { cols:11, rows:11, patrollers:2, chasers:1, items:2, label:'쉬움' },
+  normal: { cols:17, rows:17, patrollers:3, chasers:2, items:3, label:'보통' },
+  hard:   { cols:25, rows:25, patrollers:5, chasers:3, items:5, label:'어려움' },
+};
+const CELL        = 26;
+const MAX_LIVES   = 3;
+const ENEMY_TICK  = 700;
+const CHASER_TICK = 950;
+
+// ═══════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════
+let difficulty = 'easy';
+let maze = [], cols, rows;
+let player   = { x:1, y:1 };
+let goal     = { x:0, y:0 };
+let visited  = [];
+let hintPaths= [];
+let hintUsed = 3;
+let startTime= null, elapsed=0;
+let timerInterval=null, enemyInterval=null, chaserInterval=null;
+let stage=1, lives=MAX_LIVES;
+let gameActive=false;
+let rankings=JSON.parse(localStorage.getItem('mazeRankingsV2')||'[]');
+let lastNewEntry=-1;
+let enemies=[], chasers=[];
+let invincible=false;
+let items=[];  // { x, y, collected }
+
+// ═══════════════════════════════════════════════════════════
+//  DOM
+// ═══════════════════════════════════════════════════════════
+const canvas   = document.getElementById('maze');
+const ctx      = canvas.getContext('2d');
+const overlay  = document.getElementById('overlay');
+const ovTitle  = document.getElementById('ov-title');
+const ovSub    = document.getElementById('ov-sub');
+const ovTime   = document.getElementById('ov-time');
+const ovInfo   = document.getElementById('ov-info');
+const ovNext   = document.getElementById('ov-next');
+const hudTime  = document.getElementById('hud-time');
+const hudBest  = document.getElementById('hud-best');
+const hudStage = document.getElementById('hud-stage');
+const hudLives = document.getElementById('hud-lives');
+const hudItems = document.getElementById('hud-items');
+const hintBtn  = document.getElementById('hint-btn');
+const newBtn   = document.getElementById('new-btn');
+const rankList = document.getElementById('rank-list');
+
+// ═══════════════════════════════════════════════════════════
+//  SETTINGS PANEL
+// ═══════════════════════════════════════════════════════════
+document.getElementById('settings-btn').addEventListener('click', ()=>{
+  document.getElementById('settings-panel').classList.toggle('open');
+});
+
+// 조이스틱 토글
+const toggleDpad = document.getElementById('toggle-dpad');
+const toggleDpadVal = document.getElementById('toggle-dpad-val');
+const dpadEl = document.querySelector('.dpad');
+
+// 로컬스토리지에서 이전 설정 복원
+const savedDpad = localStorage.getItem('dpadEnabled');
+if (savedDpad === 'false') {
+  toggleDpad.checked = false;
+  toggleDpadVal.textContent = 'OFF';
+  dpadEl.classList.add('hidden');
+}
+
+toggleDpad.addEventListener('change', ()=>{
+  const on = toggleDpad.checked;
+  toggleDpadVal.textContent = on ? 'ON' : 'OFF';
+  dpadEl.classList.toggle('hidden', !on);
+  localStorage.setItem('dpadEnabled', on);
+});
+
+// ═══════════════════════════════════════════════════════════
+//  MANUAL TOGGLE
+// ═══════════════════════════════════════════════════════════
+document.getElementById('manual-toggle-btn').addEventListener('click', ()=>{
+  const body  = document.getElementById('manual-body');
+  const arrow = document.getElementById('manual-arrow');
+  const hdr   = document.getElementById('manual-toggle-btn');
+  body.classList.toggle('open');
+  arrow.classList.toggle('open');
+  hdr.classList.toggle('open');
+});
+
+// ═══════════════════════════════════════════════════════════
+//  MAZE GENERATION
+// ═══════════════════════════════════════════════════════════
+function generateMaze(c, r) {
+  const grid = Array.from({length:r},()=>Array(c).fill(1));
+  const vis  = Array.from({length:r},()=>Array(c).fill(false));
+  function carve(x,y){
+    vis[y][x]=true; grid[y][x]=0;
+    for (const [dx,dy] of shuffle([[0,-2],[0,2],[-2,0],[2,0]])){
+      const nx=x+dx,ny=y+dy;
+      if(nx>0&&nx<c-1&&ny>0&&ny<r-1&&!vis[ny][nx]){
+        grid[y+dy/2][x+dx/2]=0; carve(nx,ny);
+      }
+    }
+  }
+  carve(1,1);
+
+  // 추가 통로: 내부 벽을 랜덤하게 허물어 루프(우회로)를 대량 생성
+  // 가로벽·세로벽 중 양쪽이 통로인 것만 후보로 삼아 35% 제거
+  const wallCells = [];
+  for (let y=1; y<r-1; y++) {
+    for (let x=1; x<c-1; x++) {
+      if (grid[y][x] === 1) {
+        if (y%2===0 && grid[y-1][x]===0 && grid[y+1][x]===0) wallCells.push([x,y]);
+        else if (x%2===0 && grid[y][x-1]===0 && grid[y][x+1]===0) wallCells.push([x,y]);
+      }
+    }
+  }
+  shuffle(wallCells);
+  const removeCount = Math.floor(wallCells.length * 0.35);
+  for (let i=0; i<removeCount; i++) grid[wallCells[i][1]][wallCells[i][0]] = 0;
+
+  return grid;
+}
+
+function shuffle(arr){
+  for(let i=arr.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]]=[arr[j],arr[i]];
+  }
+  return arr;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  BFS
+// ═══════════════════════════════════════════════════════════
+function bfsPath(start, end){
+  const q=[start], prev={};
+  prev[`${start.x},${start.y}`]=null;
+  while(q.length){
+    const cur=q.shift();
+    if(cur.x===end.x&&cur.y===end.y){
+      const path=[];
+      let k=`${end.x},${end.y}`;
+      while(k){ const [px,py]=k.split(',').map(Number); path.unshift({x:px,y:py}); const p=prev[k]; k=p?`${p.x},${p.y}`:null; }
+      return path;
+    }
+    for(const [dx,dy] of [[0,1],[0,-1],[1,0],[-1,0]]){
+      const nx=cur.x+dx,ny=cur.y+dy,key=`${nx},${ny}`;
+      if(nx>=0&&ny>=0&&nx<cols&&ny<rows&&!maze[ny][nx]&&!(key in prev)){
+        prev[key]=cur; q.push({x:nx,y:ny});
+      }
+    }
+  }
+  return [];
+}
+
+// ═══════════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════════
+function openCells(){
+  const cells=[];
+  for(let y=1;y<rows-1;y++) for(let x=1;x<cols-1;x++) if(!maze[y][x]) cells.push({x,y});
+  return cells;
+}
+function distSq(a,b){ return (a.x-b.x)**2+(a.y-b.y)**2; }
+function spawnPos(forbidden){
+  const open=openCells().filter(c=>forbidden.every(f=>distSq(c,f)>36));
+  return open.length ? open[Math.floor(Math.random()*open.length)] : {x:3,y:3};
+}
+function buildPatrolPath(startPos){
+  const path=[startPos];
+  const vis=new Set([`${startPos.x},${startPos.y}`]);
+  for(let i=0;i<14;i++){
+    const cur=path[path.length-1];
+    let moved=false;
+    for(const [dx,dy] of shuffle([[0,1],[0,-1],[1,0],[-1,0]])){
+      const nx=cur.x+dx,ny=cur.y+dy,k=`${nx},${ny}`;
+      if(nx>=0&&ny>=0&&nx<cols&&ny<rows&&!maze[ny][nx]&&!vis.has(k)){
+        path.push({x:nx,y:ny}); vis.add(k); moved=true; break;
+      }
+    }
+    if(!moved) break;
+  }
+  return path.length>1 ? path : [{...startPos},{x:Math.min(startPos.x+2,cols-2),y:startPos.y}];
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════
+function initGame(keepStage=false){
+  if(!keepStage){ stage=1; lives=MAX_LIVES; }
+  const cfg=DIFF_CFG[difficulty];
+  const extra=Math.min((stage-1)*2,10);
+  cols=cfg.cols+extra; rows=cfg.rows+extra;
+  if(cols%2===0) cols++; if(rows%2===0) rows++;
+
+  maze    = generateMaze(cols,rows);
+  visited = Array.from({length:rows},()=>Array(cols).fill(false));
+  hintPaths=[]; hintUsed=3;
+  player={x:1,y:1}; goal={x:cols-2,y:rows-2};
+  canvas.width=cols*CELL; canvas.height=rows*CELL;
+
+  const forbidden=[player,goal];
+  enemies=[];
+  for(let i=0;i<cfg.patrollers;i++){
+    const pos=spawnPos(forbidden); forbidden.push(pos);
+    enemies.push({x:pos.x,y:pos.y,path:buildPatrolPath(pos),pathIdx:0,dir:1});
+  }
+  chasers=[];
+  for(let i=0;i<cfg.chasers;i++){
+    const pos=spawnPos(forbidden); forbidden.push(pos);
+    chasers.push({x:pos.x,y:pos.y});
+  }
+
+  clearAllIntervals();
+  startTime=Date.now(); elapsed=0;
+  timerInterval  = setInterval(tick,100);
+  enemyInterval  = setInterval(stepEnemies,ENEMY_TICK);
+  chaserInterval = setInterval(stepChasers,CHASER_TICK);
+  gameActive=true; invincible=false;
+
+  // 아이템 스폰
+  items=[];
+  const itemCount = cfg.items + Math.min(stage-1, 4);
+  for(let i=0; i<itemCount; i++){
+    const pos = spawnPos([...forbidden, ...items]);
+    forbidden.push(pos);
+    items.push({x:pos.x, y:pos.y, collected:false});
+  }
+
+  hintBtn.disabled=false;
+  hintBtn.textContent=`💡 힌트 (${hintUsed})`;
+  hudStage.textContent=stage;
+  updateLivesHUD(); updateItemsHUD(); updateBest();
+  visited[1][1]=true;
+  render(); hideOverlay();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  RESPAWN
+// ═══════════════════════════════════════════════════════════
+function respawn(){
+  player={x:1,y:1}; visited[1][1]=true;
+  invincible=true;
+  setTimeout(()=>{ invincible=false; },4000);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ENEMY LOGIC
+// ═══════════════════════════════════════════════════════════
+function stepEnemies(){
+  if(!gameActive) return;
+  for(const e of enemies){
+    e.pathIdx+=e.dir;
+    if(e.pathIdx>=e.path.length){ e.dir=-1; e.pathIdx=e.path.length-2; }
+    if(e.pathIdx<0)             { e.dir= 1; e.pathIdx=1; }
+    if(e.pathIdx>=0&&e.pathIdx<e.path.length){
+      e.x=e.path[e.pathIdx].x; e.y=e.path[e.pathIdx].y;
+    }
+    checkCollision(e);
+  }
+}
+
+function stepChasers(){
+  if(!gameActive) return;
+  for(const c of chasers){
+    const path=bfsPath(c,player);
+    if(path.length>1){ c.x=path[1].x; c.y=path[1].y; }
+    checkCollision(c);
+  }
+}
+
+function checkCollision(e){
+  if(invincible||!gameActive) return;
+  if(e.x===player.x&&e.y===player.y) onHit();
+}
+
+function checkAllOnMove(){
+  if(invincible) return;
+  for(const e of [...enemies,...chasers]){
+    if(e.x===player.x&&e.y===player.y){ onHit(); return; }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  HIT / GAME OVER
+// ═══════════════════════════════════════════════════════════
+function onHit(){
+  if(!gameActive||invincible) return;
+  lives--;
+  updateLivesHUD();
+  document.body.classList.add('death-flash');
+  setTimeout(()=>document.body.classList.remove('death-flash'),550);
+  if(lives<=0) onGameOver(); else respawn();
+}
+
+function onGameOver(){
+  clearAllIntervals(); gameActive=false;
+  ovTitle.className='overlay-title over';
+  ovTitle.textContent='GAME OVER';
+  ovSub.textContent=`스테이지 ${stage} · ${DIFF_CFG[difficulty].label} · 목숨 소진`;
+  ovTime.textContent=fmtTime(elapsed);
+  ovInfo.textContent='목숨이 모두 소진됐습니다. 다시 도전하세요!';
+  ovNext.textContent='처음부터 시작';
+  ovNext.onclick=()=>{ lastNewEntry=-1; initGame(false); };
+  showOverlay();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  TIMER
+// ═══════════════════════════════════════════════════════════
+function tick(){
+  elapsed=Math.floor((Date.now()-startTime)/1000);
+  hudTime.textContent=fmtTime(elapsed);
+  const v=hudTime;
+  if     (elapsed>60  &&difficulty==='easy')  v.className='hud-value danger';
+  else if(elapsed>90  &&difficulty==='normal')v.className='hud-value danger';
+  else if(elapsed>120 &&difficulty==='hard')  v.className='hud-value danger';
+  else v.className='hud-value';
+}
+
+function clearAllIntervals(){
+  [timerInterval,enemyInterval,chaserInterval].forEach(id=>{ if(id) clearInterval(id); });
+  timerInterval=enemyInterval=chaserInterval=null;
+  hudTime.className='hud-value';
+}
+
+function fmtTime(s){
+  return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+}
+
+function updateLivesHUD(){
+  hudLives.textContent='❤️'.repeat(Math.max(0,lives))+'🖤'.repeat(Math.max(0,MAX_LIVES-lives));
+}
+
+function updateItemsHUD(){
+  const collected=items.filter(it=>it.collected).length;
+  hudItems.textContent=`${collected}/${items.length}`;
+  hudItems.style.color = collected===items.length ? '#00ffcc' : '#ffe04b';
+}
+
+let warningTimeout=null;
+function showItemWarning(){
+  const el=document.getElementById('item-warning');
+  el.classList.add('show');
+  if(warningTimeout) clearTimeout(warningTimeout);
+  warningTimeout=setTimeout(()=>el.classList.remove('show'),1800);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════════════════════════
+function render(){
+  const W=canvas.width, H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#07070e'; ctx.fillRect(0,0,W,H);
+
+  for(let y=0;y<rows;y++) for(let x=0;x<cols;x++){
+    const cx=x*CELL,cy=y*CELL;
+    if(maze[y][x]===1){
+      ctx.fillStyle='#12122a'; ctx.fillRect(cx,cy,CELL,CELL);
+      ctx.fillStyle='rgba(90,90,160,0.1)'; ctx.fillRect(cx,cy,CELL,2);
+    } else {
+      ctx.fillStyle='#090912'; ctx.fillRect(cx,cy,CELL,CELL);
+      if(visited[y][x]){ ctx.fillStyle='rgba(0,255,204,0.04)'; ctx.fillRect(cx+1,cy+1,CELL-2,CELL-2); }
+    }
+  }
+
+  for(const hp of hintPaths){
+    ctx.fillStyle='rgba(255,200,0,0.22)';
+    ctx.beginPath(); ctx.arc(hp.x*CELL+CELL/2,hp.y*CELL+CELL/2,CELL*.17,0,Math.PI*2); ctx.fill();
+  }
+
+  // Items (노란 별 모양)
+  const now=Date.now();
+  for(const it of items){
+    if(it.collected) continue;
+    const ix=it.x*CELL+CELL/2, iy=it.y*CELL+CELL/2;
+    // glow
+    const ig=ctx.createRadialGradient(ix,iy,0,ix,iy,CELL*.9);
+    ig.addColorStop(0,'rgba(255,224,75,0.3)'); ig.addColorStop(1,'rgba(255,224,75,0)');
+    ctx.fillStyle=ig; ctx.fillRect(it.x*CELL-4,it.y*CELL-4,CELL+8,CELL+8);
+    // 별
+    ctx.save(); ctx.translate(ix,iy);
+    ctx.rotate(now/1200);
+    ctx.fillStyle='#ffe04b';
+    ctx.beginPath();
+    const sr=CELL*.22, sr2=sr*.45;
+    for(let i=0;i<10;i++){
+      const a=(i/10)*Math.PI*2-Math.PI/2;
+      const r2=i%2===0?sr:sr2;
+      ctx[i===0?'moveTo':'lineTo'](Math.cos(a)*r2,Math.sin(a)*r2);
+    }
+    ctx.closePath(); ctx.fill();
+    // 안쪽 하이라이트
+    ctx.fillStyle='rgba(255,255,200,0.6)';
+    ctx.beginPath(); ctx.arc(0,0,CELL*.07,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  // Goal
+  const gx=goal.x*CELL+CELL/2,gy=goal.y*CELL+CELL/2;
+  const gg=ctx.createRadialGradient(gx,gy,0,gx,gy,CELL*1.4);
+  gg.addColorStop(0,'rgba(255,107,53,0.28)'); gg.addColorStop(1,'rgba(255,107,53,0)');
+  ctx.fillStyle=gg; ctx.fillRect(goal.x*CELL-CELL,goal.y*CELL-CELL,CELL*3,CELL*3);
+  ctx.save(); ctx.translate(gx,gy);
+  const ts=Date.now()/800; ctx.scale(1+Math.sin(ts)*.08,1+Math.sin(ts)*.08);
+  ctx.fillStyle='#ff6b35'; ctx.beginPath();
+  const ss=CELL*.3;
+  for(let i=0;i<8;i++){ const a=(i/8)*Math.PI*2-Math.PI/2,r2=i%2===0?ss:ss*.5; ctx[i===0?'moveTo':'lineTo'](Math.cos(a)*r2,Math.sin(a)*r2); }
+  ctx.closePath(); ctx.fill(); ctx.restore();
+
+  // Patrol enemies (red circle)
+  for(const e of enemies){
+    const ex=e.x*CELL+CELL/2,ey=e.y*CELL+CELL/2;
+    const eg=ctx.createRadialGradient(ex,ey,0,ex,ey,CELL*.85);
+    eg.addColorStop(0,'rgba(255,30,80,0.32)'); eg.addColorStop(1,'rgba(255,30,80,0)');
+    ctx.fillStyle=eg; ctx.fillRect(e.x*CELL-4,e.y*CELL-4,CELL+8,CELL+8);
+    ctx.fillStyle='#ff2255'; ctx.beginPath(); ctx.arc(ex,ey,CELL*.27,0,Math.PI*2); ctx.fill();
+    // white eye
+    ctx.fillStyle='#ffffffcc'; ctx.beginPath(); ctx.arc(ex+CELL*.09,ey-CELL*.08,CELL*.09,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#220000'; ctx.beginPath(); ctx.arc(ex+CELL*.09,ey-CELL*.08,CELL*.045,0,Math.PI*2); ctx.fill();
+  }
+
+  // Chasers (purple diamond)
+  for(const c of chasers){
+    const cx2=c.x*CELL+CELL/2,cy2=c.y*CELL+CELL/2;
+    const pt=Date.now()/380, pr=CELL*(.8+Math.sin(pt)*.22);
+    const cg=ctx.createRadialGradient(cx2,cy2,0,cx2,cy2,pr);
+    cg.addColorStop(0,'rgba(160,0,255,0.38)'); cg.addColorStop(1,'rgba(160,0,255,0)');
+    ctx.fillStyle=cg; ctx.fillRect(c.x*CELL-8,c.y*CELL-8,CELL+16,CELL+16);
+    ctx.save(); ctx.translate(cx2,cy2); ctx.rotate(Math.PI/4+Date.now()/1800);
+    ctx.fillStyle='#b400ff';
+    const ds=CELL*.23; ctx.fillRect(-ds,-ds,ds*2,ds*2);
+    ctx.restore();
+    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(cx2,cy2,CELL*.08,0,Math.PI*2); ctx.fill();
+  }
+
+  // Player
+  const px=player.x*CELL+CELL/2,py=player.y*CELL+CELL/2;
+  const showPlayer=!invincible||Math.floor(Date.now()/140)%2===0;
+  if(showPlayer){
+    const pg=ctx.createRadialGradient(px,py,0,px,py,CELL*.85);
+    pg.addColorStop(0,'rgba(0,255,204,0.25)'); pg.addColorStop(1,'rgba(0,255,204,0)');
+    ctx.fillStyle=pg; ctx.fillRect(player.x*CELL-4,player.y*CELL-4,CELL+8,CELL+8);
+    ctx.fillStyle='#00ffcc'; ctx.beginPath(); ctx.arc(px,py,CELL*.27,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#fff';    ctx.beginPath(); ctx.arc(px,py,CELL*.1, 0,Math.PI*2); ctx.fill();
+  }
+
+  // Grid lines
+  ctx.strokeStyle='rgba(0,255,204,0.03)'; ctx.lineWidth=0.5;
+  for(let y=0;y<=rows;y++){ ctx.beginPath();ctx.moveTo(0,y*CELL);ctx.lineTo(W,y*CELL);ctx.stroke(); }
+  for(let x=0;x<=cols;x++){ ctx.beginPath();ctx.moveTo(x*CELL,0);ctx.lineTo(x*CELL,H);ctx.stroke(); }
+
+  if(gameActive) requestAnimationFrame(render);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MOVE
+// ═══════════════════════════════════════════════════════════
+const DIR_MAP={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0]};
+function move(dx,dy){
+  if(!gameActive) return;
+  const nx=player.x+dx,ny=player.y+dy;
+  if(nx<0||ny<0||nx>=cols||ny>=rows||maze[ny][nx]===1) return;
+  player.x=nx; player.y=ny; visited[ny][nx]=true;
+
+  // 아이템 수집
+  for(const it of items){
+    if(!it.collected && it.x===player.x && it.y===player.y){
+      it.collected=true;
+      updateItemsHUD();
+    }
+  }
+
+  checkAllOnMove();
+  if(!gameActive) return;
+  const allCollected = items.every(it=>it.collected);
+  if(player.x===goal.x && player.y===goal.y){
+    if(allCollected) onClear();
+    else showItemWarning();
+  }
+}
+document.addEventListener('keydown',e=>{ const d=DIR_MAP[e.key]; if(d){e.preventDefault();move(d[0],d[1]);} });
+
+// ─── D-PAD 터치 ────────────────────────────────────────────
+(function(){
+  const btns = [
+    { id:'dpad-up',    dx: 0, dy:-1 },
+    { id:'dpad-down',  dx: 0, dy: 1 },
+    { id:'dpad-left',  dx:-1, dy: 0 },
+    { id:'dpad-right', dx: 1, dy: 0 },
+  ];
+  // 연속 이동을 위한 인터벌
+  let repeatTimer = null;
+  function startMove(dx, dy, el) {
+    move(dx, dy);
+    el.classList.add('pressed');
+    clearInterval(repeatTimer);
+    repeatTimer = setInterval(() => move(dx, dy), 160);
+  }
+  function stopMove(el) {
+    el.classList.remove('pressed');
+    clearInterval(repeatTimer);
+    repeatTimer = null;
+  }
+  btns.forEach(({ id, dx, dy }) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    // 터치
+    el.addEventListener('touchstart', e => { e.preventDefault(); startMove(dx, dy, el); }, { passive: false });
+    el.addEventListener('touchend',   e => { e.preventDefault(); stopMove(el); },          { passive: false });
+    el.addEventListener('touchcancel',e => { e.preventDefault(); stopMove(el); },          { passive: false });
+    // 마우스 (데스크탑 테스트용)
+    el.addEventListener('mousedown', e => { e.preventDefault(); startMove(dx, dy, el); });
+    el.addEventListener('mouseup',   () => stopMove(el));
+    el.addEventListener('mouseleave',() => stopMove(el));
+  });
+})();
+
+// ═══════════════════════════════════════════════════════════
+//  CLEAR
+// ═══════════════════════════════════════════════════════════
+function onClear(){
+  clearAllIntervals(); gameActive=false;
+  const entry={difficulty,stage,time:elapsed,date:new Date().toLocaleDateString('ko-KR')};
+  rankings.unshift(entry); rankings=rankings.slice(0,20);
+  localStorage.setItem('mazeRankingsV2',JSON.stringify(rankings));
+  lastNewEntry=0; updateRankList(); updateBest();
+
+  ovTitle.className='overlay-title win';
+  ovTitle.textContent='CLEAR!';
+  ovSub.textContent=`스테이지 ${stage} 클리어 · ${DIFF_CFG[difficulty].label}`;
+  ovTime.textContent=fmtTime(elapsed);
+  ovInfo.textContent=`남은 목숨: ${'❤️'.repeat(lives)} · 아이템 ${items.length}개 수집 완료!`;
+  ovNext.textContent='다음 스테이지 →';
+  ovNext.onclick=()=>{ stage++; initGame(true); };
+  showOverlay();
+}
+
+function showOverlay(){ overlay.classList.add('show'); }
+function hideOverlay() { overlay.classList.remove('show'); }
+
+// ═══════════════════════════════════════════════════════════
+//  HINT
+// ═══════════════════════════════════════════════════════════
+hintBtn.addEventListener('click',()=>{
+  if(hintUsed<=0||!gameActive) return;
+  hintUsed--;
+  hintBtn.textContent=`💡 힌트 (${hintUsed})`;
+  if(hintUsed===0) hintBtn.disabled=true;
+  hintPaths=bfsPath(player,goal).slice(1,6);
+  setTimeout(()=>{ hintPaths=[]; },3000);
+});
+
+// ═══════════════════════════════════════════════════════════
+//  UI EVENTS
+// ═══════════════════════════════════════════════════════════
+newBtn.addEventListener('click',()=>{
+  clearAllIntervals();
+  gameActive=false;
+  ovTitle.className='overlay-title win';
+  ovTitle.textContent='새 게임';
+  ovSub.textContent='현재 진행 상황이 초기화됩니다';
+  ovTime.textContent='';
+  ovInfo.textContent='스테이지 1 · 목숨 3개로 다시 시작합니다.';
+  ovNext.textContent='▶ 시작하기';
+  ovNext.onclick=()=>{ lastNewEntry=-1; initGame(false); };
+  showOverlay();
+});
+
+document.querySelectorAll('.diff-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.diff-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    difficulty=btn.dataset.diff;
+    lastNewEntry=-1; initGame(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+//  RANKING
+// ═══════════════════════════════════════════════════════════
+function updateBest(){
+  const best=rankings.filter(r=>r.difficulty===difficulty).sort((a,b)=>a.time-b.time)[0];
+  hudBest.textContent=best?fmtTime(best.time):'--:--';
+}
+function updateRankList(){
+  if(!rankings.length){ rankList.innerHTML='<div class="rank-empty">기록이 없습니다</div>'; return; }
+  const medals=['🥇','🥈','🥉'];
+  rankList.innerHTML=rankings.slice(0,10).map((r,i)=>`
+    <div class="rank-item ${i===lastNewEntry?'new-entry':''}">
+      <span class="rank-pos">${medals[i]||(i+1)}</span>
+      <span class="rank-diff ${r.difficulty}">${DIFF_CFG[r.difficulty]?.label||r.difficulty}</span>
+      <span style="color:var(--text-dim);font-size:.72rem">${r.date}</span>
+      <span class="rank-stage">Stage ${r.stage}</span>
+      <span class="rank-time">${fmtTime(r.time)}</span>
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  START
+// ═══════════════════════════════════════════════════════════
+updateRankList();
+
+// 타이틀 화면 난이도 선택
+function selectDiff(btn) {
+  document.querySelectorAll('.start-diff-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  difficulty = btn.dataset.diff;
+  // 상단 난이도 버튼도 동기화
+  document.querySelectorAll('.diff-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.diff===difficulty);
+  });
+}
+
+document.getElementById('start-btn').addEventListener('click', ()=>{
+  document.getElementById('title-overlay').classList.remove('show');
+  initGame(false);
+});
+</script>
+</body>
+</html>
